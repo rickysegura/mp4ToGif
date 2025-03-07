@@ -5,21 +5,18 @@ from moviepy import VideoFileClip
 import numpy as np
 from PIL import Image
 
-def resize_image(image, newsize):
-    return np.array(Image.fromarray(image).resize(newsize, resample=Image.BILINEAR))
-
 def convert_mp4_to_gif(input_path, output_path, start_time=0, duration=None, fps=10, scale=0.5):
     try:
         video = VideoFileClip(input_path)
         if duration:
-            video = video.subclip(start_time, start_time + duration)
+            video = video.subclipped(start_time, start_time + duration)
         else:
-            video = video.subclip(start_time)
+            video = video.subclipped(start_time)
         
         # Custom resize function
         new_width = int(video.w * scale)
         new_height = int(video.h * scale)
-        resized_video = video.fl_image(lambda image: resize_image(image, (new_width, new_height)))
+        resized_video = video.resized(width=new_width, height=new_height)
         
         resized_video.write_gif(output_path, fps=fps)
         video.close()
