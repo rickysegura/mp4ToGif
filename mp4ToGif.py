@@ -52,6 +52,35 @@ def convert_mp4_to_gif(input_path, output_path, start_time=0, duration=None, fps
             progress_callback(-1)
         return False
 
+# Create a tooltip class
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip = None
+        self.widget.bind("<Enter>", self.show_tooltip)
+        self.widget.bind("<Leave>", self.hide_tooltip)
+    
+    def show_tooltip(self, event=None):
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        
+        # Create a toplevel window
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_geometry(f"+{x}+{y}")
+        
+        label = tk.Label(self.tooltip, text=self.text, justify=tk.LEFT,
+                         background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                         font=("Helvetica", "9", "normal"), padx=5, pady=2)
+        label.pack(ipadx=1)
+    
+    def hide_tooltip(self, event=None):
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
+
 class ModernGUIApp:
     def __init__(self, master):
         self.master = master
@@ -85,16 +114,29 @@ class ModernGUIApp:
         file_frame.columnconfigure(1, weight=1)
         
         ttk.Label(file_frame, text="Input:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        ttk.Entry(file_frame, textvariable=self.input_path, width=50).grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        self.input_entry = ttk.Entry(file_frame, textvariable=self.input_path, width=50)
+        self.input_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        ToolTip(self.input_entry, "Path to the input MP4 file or folder containing video files")
         
         button_frame = ttk.Frame(file_frame)
         button_frame.grid(row=0, column=2, padx=5)
-        ttk.Button(button_frame, text="File", command=self.browse_input_file).pack(side=tk.LEFT, padx=2)
-        ttk.Button(button_frame, text="Folder", command=self.browse_input_folder).pack(side=tk.LEFT, padx=2)
+        
+        self.file_btn = ttk.Button(button_frame, text="File", command=self.browse_input_file)
+        self.file_btn.pack(side=tk.LEFT, padx=2)
+        ToolTip(self.file_btn, "Select a single video file to convert")
+        
+        self.folder_btn = ttk.Button(button_frame, text="Folder", command=self.browse_input_folder)
+        self.folder_btn.pack(side=tk.LEFT, padx=2)
+        ToolTip(self.folder_btn, "Select a folder with multiple video files for batch conversion")
         
         ttk.Label(file_frame, text="Output:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        ttk.Entry(file_frame, textvariable=self.output_path, width=50).grid(row=1, column=1, sticky="ew", padx=5, pady=5)
-        ttk.Button(file_frame, text="Browse", command=self.browse_output).grid(row=1, column=2, padx=5, pady=5)
+        self.output_entry = ttk.Entry(file_frame, textvariable=self.output_path, width=50)
+        self.output_entry.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
+        ToolTip(self.output_entry, "Path where the GIF file(s) will be saved")
+        
+        self.output_btn = ttk.Button(file_frame, text="Browse", command=self.browse_output)
+        self.output_btn.grid(row=1, column=2, padx=5, pady=5)
+        ToolTip(self.output_btn, "Select the output location for your GIF file(s)")
         
         # Parameters section
         param_frame = ttk.LabelFrame(main_frame, text="Conversion Settings", padding="10 10 10 10")
@@ -107,21 +149,25 @@ class ModernGUIApp:
         self.start_time = ttk.Entry(param_frame, width=10)
         self.start_time.grid(row=0, column=1, sticky="w", padx=5, pady=8)
         self.start_time.insert(0, "0")
+        ToolTip(self.start_time, "Time in seconds from where to start the GIF (e.g., 5 starts 5 seconds into the video)")
         
         ttk.Label(param_frame, text="Duration (s):").grid(row=1, column=0, sticky="w", padx=5, pady=8)
         self.duration = ttk.Entry(param_frame, width=10)
         self.duration.grid(row=1, column=1, sticky="w", padx=5, pady=8)
+        ToolTip(self.duration, "Length of the GIF in seconds. Leave empty to use the entire video from the start time")
         
         # Second column
         ttk.Label(param_frame, text="FPS:").grid(row=0, column=2, sticky="w", padx=5, pady=8)
         self.fps = ttk.Entry(param_frame, width=10)
         self.fps.grid(row=0, column=3, sticky="w", padx=5, pady=8)
         self.fps.insert(0, "10")
+        ToolTip(self.fps, "Frames Per Second - higher values give smoother animations but larger file sizes")
         
         ttk.Label(param_frame, text="Scale:").grid(row=1, column=2, sticky="w", padx=5, pady=8)
         self.scale = ttk.Entry(param_frame, width=10)
         self.scale.grid(row=1, column=3, sticky="w", padx=5, pady=8)
         self.scale.insert(0, "0.5")
+        ToolTip(self.scale, "Resize factor (0.5 = half size, 1.0 = original size). Lower values reduce file size")
         
         # Action buttons
         action_frame = ttk.Frame(main_frame)
@@ -129,6 +175,7 @@ class ModernGUIApp:
         
         self.convert_button = ttk.Button(action_frame, text="Convert", command=self.start_conversion)
         self.convert_button.pack(pady=10)
+        ToolTip(self.convert_button, "Start the conversion process with the current settings")
         
         # Progress section
         progress_frame = ttk.Frame(main_frame)
