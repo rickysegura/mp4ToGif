@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image
 import threading
 from functools import partial
+import math
 
 def resize_image(image, newsize):
     # Use direct PIL resize for better performance
@@ -81,35 +82,207 @@ class ToolTip:
             self.tooltip.destroy()
             self.tooltip = None
 
+class HelpDialog:
+    def __init__(self, parent):
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("MP4 to GIF Converter Help")
+        self.dialog.geometry("600x400")
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        # Center the dialog on the parent window
+        parent_x = parent.winfo_rootx()
+        parent_y = parent.winfo_rooty()
+        parent_width = parent.winfo_width()
+        parent_height = parent.winfo_height()
+        
+        dialog_width = 600
+        dialog_height = 400
+        
+        x = parent_x + (parent_width - dialog_width) // 2
+        y = parent_y + (parent_height - dialog_height) // 2
+        
+        self.dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+        
+        # Add a notebook for tabbed help sections
+        notebook = ttk.Notebook(self.dialog)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Time inputs tab
+        time_frame = ttk.Frame(notebook, padding=10)
+        notebook.add(time_frame, text="Time Inputs")
+        
+        time_help = tk.Text(time_frame, wrap=tk.WORD, height=15, width=60)
+        time_help.pack(fill=tk.BOTH, expand=True)
+        time_help.insert(tk.END, """
+Time Input Guide:
+
+Start Time:
+- Enter a value in seconds to start the GIF at a specific point in the video
+- Examples: 
+  • 30 = Start at 30 seconds
+  • 60 = Start at 1 minute
+  • 90 = Start at 1 minute, 30 seconds
+  • 120 = Start at 2 minutes
+
+Duration:
+- Enter how long you want the GIF to be (in seconds)
+- Leave empty to use the entire video from the start time
+- Examples:
+  • 5 = Create a 5-second GIF
+  • 10 = Create a 10-second GIF
+  • 30 = Create a 30-second GIF
+
+Time Conversion Reference:
+• 60 seconds = 1 minute
+• 120 seconds = 2 minutes
+• 180 seconds = 3 minutes
+• 300 seconds = 5 minutes
+        """)
+        time_help.config(state=tk.DISABLED)
+        
+        # Parameters tab
+        param_frame = ttk.Frame(notebook, padding=10)
+        notebook.add(param_frame, text="Parameters")
+        
+        param_help = tk.Text(param_frame, wrap=tk.WORD, height=15, width=60)
+        param_help.pack(fill=tk.BOTH, expand=True)
+        param_help.insert(tk.END, """
+Parameter Guide:
+
+FPS (Frames Per Second):
+- Controls the smoothness of the animation
+- Higher values = smoother animation but larger file size
+- Recommended values: 10-15 for most cases
+- For very smooth animation: 20-24
+
+Scale:
+- Resizes the output GIF relative to the original video size
+- Values between 0 and 1
+- Examples:
+  • 0.5 = Half the original size (recommended)
+  • 0.25 = Quarter of the original size
+  • 1.0 = Original size (will create a large file)
+        """)
+        param_help.config(state=tk.DISABLED)
+        
+        # File size tab
+        size_frame = ttk.Frame(notebook, padding=10)
+        notebook.add(size_frame, text="File Size")
+        
+        size_help = tk.Text(size_frame, wrap=tk.WORD, height=15, width=60)
+        size_help.pack(fill=tk.BOTH, expand=True)
+        size_help.insert(tk.END, """
+File Size Considerations:
+
+GIF file size depends on several factors:
+- Duration: Longer GIFs = larger files
+- FPS: Higher frame rates = larger files
+- Scale: Larger dimensions = larger files
+- Content: Complex scenes with lots of motion = larger files
+
+Tips to reduce file size:
+- Decrease the FPS (8-10 is often sufficient)
+- Reduce the scale (try 0.3-0.5)
+- Keep the duration short (under 10 seconds if possible)
+- Choose scenes with less movement/complexity
+        """)
+        size_help.config(state=tk.DISABLED)
+        
+        # Close button
+        close_button = ttk.Button(self.dialog, text="Close", command=self.dialog.destroy)
+        close_button.pack(pady=10)
+
 class ModernGUIApp:
     def __init__(self, master):
         self.master = master
         master.title("MP4 to GIF Converter - Neospaces")
-        master.geometry("650x500")
+        
+        # Make window start maximized (full screen)
+        w, h = master.winfo_screenwidth(), master.winfo_screenheight()
+        master.geometry(f"{w}x{h}+0+0")
+        master.state('zoomed')  # Windows
+        
+        # Fallback to reasonable size if maximizing doesn't work
+        master.minsize(650, 600)
+        
         master.configure(bg="#f0f0f0")
+        
+        # Ensure window properly resizes all widgets
+        master.pack_propagate(False)
+        master.grid_propagate(False)
         
         # Set styles
         self.style = ttk.Style()
         self.style.configure("TButton", padding=6, relief="flat", background="#3498db")
         self.style.configure("TFrame", background="#f0f0f0")
         self.style.configure("TLabel", background="#f0f0f0", font=("Helvetica", 10))
-        self.style.configure("Header.TLabel", font=("Helvetica", 12, "bold"))
+        self.style.configure("Header.TLabel", font=("Helvetica", 18, "bold"))  # Bigger header
+        self.style.configure("Example.TLabel", font=("Helvetica", 9, "italic"), foreground="#666666")
+        self.style.configure("Help.TButton", font=("Helvetica", 8))
         
-        # Create main frame
-        main_frame = ttk.Frame(master, padding="20 20 20 20", style="TFrame")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # Create a canvas with scrollbar for scrolling
+        self.canvas = tk.Canvas(master, bg="#f0f0f0", highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(master, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Create main frame inside canvas
+        main_frame = ttk.Frame(self.canvas, padding="20 20 20 20", style="TFrame")
+        
+        # Configure main frame to center content
+        main_frame.columnconfigure(0, weight=1)  # Left padding column
+        main_frame.columnconfigure(1, weight=0)  # Content column
+        main_frame.columnconfigure(2, weight=1)  # Right padding column
+        
+        # Main content frame (centered)
+        content_frame = ttk.Frame(main_frame)
+        content_frame.grid(row=0, column=1, sticky="n")
+        
+        # Add main frame to canvas
+        self.canvas_frame = self.canvas.create_window((0, 0), window=main_frame, anchor="nw", width=w)
+        
+        # Configure canvas scrolling
+        def configure_scroll_region(event):
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        
+        main_frame.bind("<Configure>", configure_scroll_region)
+        
+        # Mouse wheel scrolling
+        def _on_mousewheel(event):
+            self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        # Bind mousewheel for different platforms
+        if master.tk.call('tk', 'windowingsystem') == 'win32':
+            self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        else:
+            self.canvas.bind_all("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
+            self.canvas.bind_all("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
         
         # Variables
         self.input_path = tk.StringVar()
         self.output_path = tk.StringVar()
         self.conversion_active = False
+        self.video_info = {"duration": 0, "width": 0, "height": 0}
         
         # Header
-        header_label = ttk.Label(main_frame, text="MP4 to GIF Converter", style="Header.TLabel")
-        header_label.grid(row=0, column=0, columnspan=4, pady=(0, 20))
+        header_frame = ttk.Frame(content_frame)
+        header_frame.grid(row=0, column=0, columnspan=4, pady=(0, 20))
+        
+        header_label = ttk.Label(header_frame, text="MP4 to GIF Converter", style="Header.TLabel")
+        header_label.pack(side=tk.LEFT)
+        
+        # Help button
+        help_button = ttk.Button(header_frame, text="?", width=3, 
+                               command=lambda: HelpDialog(self.master))
+        help_button.pack(side=tk.LEFT, padx=(10, 0))
+        ToolTip(help_button, "Open help documentation")
         
         # Input section
-        file_frame = ttk.LabelFrame(main_frame, text="File Selection", padding="10 10 10 10")
+        file_frame = ttk.LabelFrame(content_frame, text="File Selection", padding="10 10 10 10")
         file_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(0, 15))
         file_frame.columnconfigure(1, weight=1)
         
@@ -139,47 +312,100 @@ class ModernGUIApp:
         ToolTip(self.output_btn, "Select the output location for your GIF file(s)")
         
         # Parameters section
-        param_frame = ttk.LabelFrame(main_frame, text="Conversion Settings", padding="10 10 10 10")
+        param_frame = ttk.LabelFrame(content_frame, text="Conversion Settings", padding="10 10 10 10")
         param_frame.grid(row=2, column=0, columnspan=4, sticky="ew", pady=(0, 15))
         param_frame.columnconfigure(1, weight=1)
         param_frame.columnconfigure(3, weight=1)
         
-        # First column
-        ttk.Label(param_frame, text="Start Time (s):").grid(row=0, column=0, sticky="w", padx=5, pady=8)
+        # First column - Time inputs
+        time_label_frame = ttk.Frame(param_frame)
+        time_label_frame.grid(row=0, column=0, sticky="w", padx=5, pady=8)
+        
+        ttk.Label(time_label_frame, text="Start Time (s):").pack(anchor="w")
+        
         self.start_time = ttk.Entry(param_frame, width=10)
         self.start_time.grid(row=0, column=1, sticky="w", padx=5, pady=8)
         self.start_time.insert(0, "0")
-        ToolTip(self.start_time, "Time in seconds from where to start the GIF (e.g., 5 starts 5 seconds into the video)")
+        ToolTip(self.start_time, "Enter the starting point in seconds (e.g., 30 for 30 seconds into the video, 90 for 1:30)")
+        
+        # Example label for start time (with better space utilization)
+        start_example_frame = ttk.Frame(param_frame)
+        start_example_frame.grid(row=0, column=2, columnspan=2, sticky="w", padx=5, pady=8)
+        ttk.Label(start_example_frame, text="← seconds from beginning", 
+                style="Example.TLabel").pack(anchor="w")
+        ttk.Label(start_example_frame, text="   Examples: 60s = 1min, 90s = 1:30", 
+                style="Example.TLabel").pack(anchor="w")
         
         ttk.Label(param_frame, text="Duration (s):").grid(row=1, column=0, sticky="w", padx=5, pady=8)
         self.duration = ttk.Entry(param_frame, width=10)
         self.duration.grid(row=1, column=1, sticky="w", padx=5, pady=8)
-        ToolTip(self.duration, "Length of the GIF in seconds. Leave empty to use the entire video from the start time")
+        ToolTip(self.duration, "Enter the length of the GIF in seconds (e.g., 5 for 5 seconds). Leave empty to use the entire video from the start time")
         
-        # Second column
-        ttk.Label(param_frame, text="FPS:").grid(row=0, column=2, sticky="w", padx=5, pady=8)
+        # Example label for duration (with better space utilization)
+        duration_example_frame = ttk.Frame(param_frame)
+        duration_example_frame.grid(row=1, column=2, columnspan=2, sticky="w", padx=5, pady=8)
+        ttk.Label(duration_example_frame, text="← leave empty for full video from start", 
+                style="Example.TLabel").pack(anchor="w")
+        ttk.Label(duration_example_frame, text="   Examples: 5 for 5 seconds, 10 for 10 seconds", 
+                style="Example.TLabel").pack(anchor="w")
+        
+        # Second column - FPS and Scale
+        ttk.Label(param_frame, text="FPS:").grid(row=2, column=0, sticky="w", padx=5, pady=8)
         self.fps = ttk.Entry(param_frame, width=10)
-        self.fps.grid(row=0, column=3, sticky="w", padx=5, pady=8)
+        self.fps.grid(row=2, column=1, sticky="w", padx=5, pady=8)
         self.fps.insert(0, "10")
         ToolTip(self.fps, "Frames Per Second - higher values give smoother animations but larger file sizes")
         
-        ttk.Label(param_frame, text="Scale:").grid(row=1, column=2, sticky="w", padx=5, pady=8)
+        # Example label for FPS
+        ttk.Label(param_frame, text="← 10-15 recommended (higher = smoother but larger)", 
+                style="Example.TLabel").grid(row=2, column=2, sticky="w", padx=5, pady=8)
+        
+        ttk.Label(param_frame, text="Scale:").grid(row=3, column=0, sticky="w", padx=5, pady=8)
         self.scale = ttk.Entry(param_frame, width=10)
-        self.scale.grid(row=1, column=3, sticky="w", padx=5, pady=8)
+        self.scale.grid(row=3, column=1, sticky="w", padx=5, pady=8)
         self.scale.insert(0, "0.5")
         ToolTip(self.scale, "Resize factor (0.5 = half size, 1.0 = original size). Lower values reduce file size")
         
-        # Action buttons
-        action_frame = ttk.Frame(main_frame)
-        action_frame.grid(row=3, column=0, columnspan=4, pady=10)
+        # Example label for scale
+        ttk.Label(param_frame, text="← 0.5 = half size, 0.25 = quarter size", 
+                style="Example.TLabel").grid(row=3, column=2, sticky="w", padx=5, pady=8)
         
-        self.convert_button = ttk.Button(action_frame, text="Convert", command=self.start_conversion)
+        # File size estimation
+        size_frame = ttk.LabelFrame(content_frame, text="Output Estimation", padding="10 10 10 10")
+        size_frame.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(0, 15))
+        size_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(size_frame, text="Estimated File Size:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.est_size_var = tk.StringVar(value="Select a file to see estimate")
+        self.est_size_label = ttk.Label(size_frame, textvariable=self.est_size_var)
+        self.est_size_label.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        
+        ttk.Label(size_frame, text="Video Info:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.video_info_var = tk.StringVar(value="No video loaded")
+        self.video_info_label = ttk.Label(size_frame, textvariable=self.video_info_var)
+        self.video_info_label.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        
+        # Recalculate button for size estimation
+        ttk.Button(size_frame, text="Recalculate", 
+                 command=self.update_size_estimation).grid(row=0, column=2, rowspan=2, padx=5, pady=5)
+        
+        # Action buttons
+        action_frame = ttk.Frame(content_frame)
+        action_frame.grid(row=4, column=0, columnspan=4, pady=10)
+        
+        # Convert button style
+        self.style.configure("Convert.TButton", font=("Helvetica", 12, "bold"), padding=10)
+        
+        self.convert_button = ttk.Button(action_frame, text="Convert", 
+                                      command=self.start_conversion, 
+                                      style="Convert.TButton", 
+                                      width=20)  # Make button wider
         self.convert_button.pack(pady=10)
         ToolTip(self.convert_button, "Start the conversion process with the current settings")
         
         # Progress section
-        progress_frame = ttk.Frame(main_frame)
-        progress_frame.grid(row=4, column=0, columnspan=4, sticky="ew", pady=5)
+        progress_frame = ttk.Frame(content_frame)
+        progress_frame.grid(row=5, column=0, columnspan=4, sticky="ew", pady=5)
         progress_frame.columnconfigure(0, weight=1)
         
         self.progress = ttk.Progressbar(progress_frame, length=400, mode='determinate')
@@ -189,6 +415,112 @@ class ModernGUIApp:
         self.status_label = ttk.Label(progress_frame, textvariable=self.status_var)
         self.status_label.grid(row=1, column=0, sticky="w", padx=5)
         
+        # Add extra space at the bottom to ensure everything is visible when scrolling
+        ttk.Frame(content_frame, height=20).grid(row=6, column=0, columnspan=4)
+        
+        # Bind events for calculating file size
+        self.fps.bind("<KeyRelease>", lambda e: self.update_size_estimation())
+        self.scale.bind("<KeyRelease>", lambda e: self.update_size_estimation())
+        self.duration.bind("<KeyRelease>", lambda e: self.update_size_estimation())
+    
+    def get_video_info(self, file_path):
+        """Get video information for size estimation"""
+        try:
+            if not os.path.isfile(file_path):
+                return
+                
+            video = VideoFileClip(file_path, audio=False)
+            self.video_info = {
+                "duration": video.duration,
+                "width": video.w,
+                "height": video.h,
+                "fps": video.fps
+            }
+            video.close()
+            
+                # Update video info display
+            info_text = f"Duration: {self.format_time(self.video_info['duration'])}, " \
+                      f"Resolution: {self.video_info['width']}x{self.video_info['height']}, " \
+                      f"FPS: {self.video_info['fps']:.1f}"
+            self.video_info_var.set(info_text)
+            
+            # Make sure the window recalculates its scroll region
+            self.master.update_idletasks()
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+            
+            # Update size estimation
+            self.update_size_estimation()
+            
+        except Exception as e:
+            self.video_info_var.set(f"Error loading video info: {str(e)}")
+    
+    def format_time(self, seconds):
+        """Format seconds as MM:SS"""
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}:{secs:02d}"
+    
+    def update_size_estimation(self):
+        """Update the file size estimation based on current parameters"""
+        try:
+            if not self.input_path.get() or not os.path.isfile(self.input_path.get()):
+                self.est_size_var.set("Select a file to see estimate")
+                return
+            
+            # Get parameters
+            try:
+                fps = float(self.fps.get())
+                scale = float(self.scale.get())
+                duration_input = self.duration.get()
+                duration = float(duration_input) if duration_input else self.video_info.get("duration", 0)
+            except (ValueError, TypeError):
+                self.est_size_var.set("Invalid parameter values")
+                return
+            
+            if duration <= 0:
+                duration = self.video_info.get("duration", 0)
+            
+            # Calculate size
+            width = int(self.video_info.get("width", 0) * scale)
+            height = int(self.video_info.get("height", 0) * scale)
+            
+            if width == 0 or height == 0:
+                self.est_size_var.set("Unable to estimate (video info missing)")
+                return
+            
+            # Rough GIF size estimation
+            # This is a simplistic model - actual results will vary
+            pixels_per_frame = width * height
+            frames = fps * duration
+            bytes_per_pixel = 0.7  # Approximate for GIF with moderately complex content
+            
+            # Apply compression factor based on content complexity
+            # Lower scale and FPS improves compression
+            compression_factor = 0.7 * (1 - 0.3 * (1 - scale)) * (1 - 0.2 * (1 - min(fps, 30) / 30))
+            
+            estimated_size_bytes = pixels_per_frame * frames * bytes_per_pixel * compression_factor
+            
+            # Convert to appropriate unit
+            if estimated_size_bytes < 1024:
+                size_text = f"{estimated_size_bytes:.1f} bytes"
+            elif estimated_size_bytes < 1024 * 1024:
+                size_text = f"{estimated_size_bytes / 1024:.1f} KB"
+            else:
+                size_text = f"{estimated_size_bytes / (1024 * 1024):.1f} MB"
+            
+            duration_text = f"for {duration:.1f}s"
+            if not duration_input:
+                duration_text += " (full video)"
+            
+            self.est_size_var.set(f"~{size_text} {duration_text}")
+            
+            # Add warning for large files
+            if estimated_size_bytes > 10 * 1024 * 1024:
+                self.est_size_var.set(f"{self.est_size_var.get()} - WARNING: Very large file!")
+            
+        except Exception as e:
+            self.est_size_var.set(f"Error calculating: {str(e)}")
+    
     def browse_input_file(self):
         file = filedialog.askopenfilename(filetypes=[("MP4 files", "*.mp4"), ("All Video Files", "*.mp4 *.avi *.mov *.mkv")])
         if file:
@@ -197,6 +529,8 @@ class ModernGUIApp:
             if not self.output_path.get():
                 output = os.path.splitext(file)[0] + ".gif"
                 self.output_path.set(output)
+            # Get video info for estimation
+            self.get_video_info(file)
 
     def browse_input_folder(self):
         folder = filedialog.askdirectory()
@@ -205,6 +539,9 @@ class ModernGUIApp:
             # Clear output path if it's a file path
             if self.output_path.get() and not os.path.isdir(self.output_path.get()):
                 self.output_path.set("")
+            # Reset video info
+            self.video_info_var.set("Batch mode - size varies by file")
+            self.est_size_var.set("Varies by file")
 
     def browse_output(self):
         input_path = self.input_path.get()
@@ -240,6 +577,10 @@ class ModernGUIApp:
         else:  # In progress
             self.progress['value'] = value
             self.status_var.set(message or f"Converting... {value}%")
+        
+        # Ensure progress bar is visible
+        self.canvas.update_idletasks()
+        self.canvas.yview_moveto(1.0)  # Scroll to bottom
             
     def validate_inputs(self):
         """Validate all input parameters"""
