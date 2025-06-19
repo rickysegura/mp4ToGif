@@ -4,6 +4,8 @@
 
 Enhanced MP4 to GIF Converter is a user-friendly desktop application that allows you to convert MP4 video files to GIF format. Built with Python and Tkinter, this tool provides a graphical interface for easy conversion of single files or batch processing of multiple files, with helpful guidance for all settings.
 
+![Demo](./screenshot.png)
+
 ## Features
 
 - Convert single MP4 files to GIF
